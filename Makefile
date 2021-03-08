@@ -1,4 +1,4 @@
-CFLAGS=-g -Wall
+CFLAGS=-g -Wall -pthread
 LDFLAGS=-lcrypto
 
 all: break_md5 
