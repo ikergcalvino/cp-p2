@@ -41,23 +41,19 @@ long pass_to_long(char *str) {
     return res;
 };
 
-void *long_to_pass(void *ptr) {  // str should have size PASS_SIZE+1
-    struct break_md5 *args = ptr;
+void long_to_pass(long n, unsigned char *str) {  // str should have size PASS_SIZE+1
     for(int i=PASS_LEN-1; i >= 0; i--) {
-        args->pass[i] = args->i % 26 + 'a';
-        args->i /= 26;
+        str[i] = n % 26 + 'a';
+        n /= 26;
     }
-    args->pass[PASS_LEN] = '\0';
-    return NULL;
+    str[PASS_LEN] = '\0';
 }
 
-void *to_hex(void *ptr) {
-    struct break_md5 *args = ptr;
+void to_hex(unsigned char *res, char *hex_res) {
     for(int i=0; i < MD5_DIGEST_LENGTH; i++) {
-        snprintf(&args->hex_res[i*2], 3, "%.2hhx", args->res[i]);
+        snprintf(&hex_res[i*2], 3, "%.2hhx", res[i]);
     }
-    args->hex_res[MD5_DIGEST_LENGTH * 2] = '\0';
-    return NULL;
+    hex_res[MD5_DIGEST_LENGTH * 2] = '\0';
 }
 
 char *break_pass(char *md5) {
@@ -81,12 +77,12 @@ char *break_pass(char *md5) {
     long bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
                                      // lowercase chars =>
                                     //     26 ^ PASS_LEN  different cases
-    for(long i=0; i < bound; i++) {
-        //long_to_pass(args->i, args->pass);
+    for(args->i=0; args->i < bound; args->i++) {
+        long_to_pass(args->i, args->pass);
 
         MD5(args->pass, PASS_LEN, args->res);
 
-        //to_hex(args->res, args->hex_res);
+        to_hex(args->res, args->hex_res);
 
         if(!strcmp(args->hex_res, md5)) break; // Found it!
     }
