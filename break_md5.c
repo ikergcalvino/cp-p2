@@ -9,11 +9,11 @@
 
 struct break_md5
 {
+    char *md5;
     unsigned char res[MD5_DIGEST_LENGTH];
     char hex_res[MD5_DIGEST_LENGTH * 2 + 1];
     unsigned char *pass;
     long bound;
-    char *md5;
     pthread_mutex_t *mutex;
 };
 
@@ -90,11 +90,11 @@ char *break_pass(char *md5) {
 
     pthread_mutex_init(args->mutex, NULL);
 
+    args->md5 = md5;
     args->pass = malloc((PASS_LEN + 1) * sizeof(char));
     args->bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
                                      // lowercase chars =>
                                     //     26 ^ PASS_LEN  different cases
-    args->md5 = md5;
 
     //call *cracking in different threads
 
