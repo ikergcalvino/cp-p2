@@ -12,7 +12,8 @@ struct break_md5
     unsigned char res[MD5_DIGEST_LENGTH];
     char hex_res[MD5_DIGEST_LENGTH * 2 + 1];
     unsigned char *pass;
-    long i;
+    long bound;
+    char *md5;
     pthread_mutex_t *mutex;
 };
 
@@ -56,6 +57,22 @@ void to_hex(unsigned char *res, char *hex_res) {
     hex_res[MD5_DIGEST_LENGTH * 2] = '\0';
 }
 
+void *cracking(void *ptr) {
+    struct break_md5 *args = ptr;
+    
+    for(long i=0; i < args->bound; i++) {
+        long_to_pass(i, args->pass);
+
+        MD5(args->pass, PASS_LEN, args->res);
+
+        to_hex(args->res, args->hex_res);
+
+        if(!strcmp(args->hex_res, args->md5)) break; // Found it!
+    }
+
+    return NULL;
+}
+
 char *break_pass(char *md5) {
     struct break_md5 *args;
     pthread_t *threads;
@@ -74,18 +91,12 @@ char *break_pass(char *md5) {
     pthread_mutex_init(args->mutex, NULL);
 
     args->pass = malloc((PASS_LEN + 1) * sizeof(char));
-    long bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
+    args->bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
                                      // lowercase chars =>
                                     //     26 ^ PASS_LEN  different cases
-    for(args->i=0; args->i < bound; args->i++) {
-        long_to_pass(args->i, args->pass);
+    args->md5 = md5;
 
-        MD5(args->pass, PASS_LEN, args->res);
-
-        to_hex(args->res, args->hex_res);
-
-        if(!strcmp(args->hex_res, md5)) break; // Found it!
-    }
+    //call *cracking in different threads
 
     psswd = (char *) args->pass;
 
