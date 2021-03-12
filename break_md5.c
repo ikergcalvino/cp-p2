@@ -6,6 +6,7 @@
 #include <pthread.h>
 
 #define PASS_LEN 6
+#define N_THREADS 8
 
 struct break_md5
 {
@@ -13,8 +14,15 @@ struct break_md5
     unsigned char res[MD5_DIGEST_LENGTH];
     char hex_res[MD5_DIGEST_LENGTH * 2 + 1];
     unsigned char *pass;
-    long bound;
+    long init;
+    long end;
     pthread_mutex_t *mutex;
+};
+
+struct thread_info
+{
+    pthread_t thread;
+    struct break_md5 *args;
 };
 
 long ipow(long base, int exp)
@@ -59,9 +67,9 @@ void to_hex(unsigned char *res, char *hex_res) {
 
 void *cracking(void *ptr) {
     struct break_md5 *args = ptr;
-    
-    for(long i=0; i < args->bound; i++) {
-        long_to_pass(i, args->pass);
+
+    for( ; args->init < args->end; args->init++) {
+        long_to_pass(args->init, args->pass);
 
         MD5(args->pass, PASS_LEN, args->res);
 
@@ -74,36 +82,52 @@ void *cracking(void *ptr) {
 }
 
 char *break_pass(char *md5) {
-    struct break_md5 *args;
-    pthread_t *threads;
+    struct thread_info *threads;
     char *psswd;
+    int i;
 
-    args = malloc(sizeof(struct break_md5));
-    args->mutex = malloc(sizeof(pthread_mutex_t));
-    threads = malloc(sizeof(pthread_t) * 2);
+    threads = malloc(sizeof(struct thread_info) * N_THREADS);
 
-    if (args == NULL || args->mutex == NULL || threads == NULL)
-    {
+    if (threads == NULL) {
         printf("Not enough memory\n");
         exit(1);
     }
 
-    pthread_mutex_init(args->mutex, NULL);
-
-    args->md5 = md5;
-    args->pass = malloc((PASS_LEN + 1) * sizeof(char));
-    args->bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
+    long bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
                                      // lowercase chars =>
                                     //     26 ^ PASS_LEN  different cases
 
-    //call *cracking in different threads
+    for (i = 0; i < N_THREADS; i++) {
+        threads[i].args = malloc(sizeof(struct break_md5));
 
-    psswd = (char *) args->pass;
+        threads[i].args->md5 = md5;
+        threads[i].args->pass = malloc((PASS_LEN + 1) * sizeof(char));
+        threads[i].args->init = (bound/N_THREADS) * i;
+        threads[i].args->end = (bound/N_THREADS) * (i + 1);
+        threads[i].args->mutex = malloc(sizeof(pthread_mutex_t));
 
-    pthread_mutex_destroy(args->mutex);
-    free(args->mutex);
+        if (0 != pthread_create(&threads[i].thread, NULL, cracking, threads[i].args)) {
+            printf("Could not create thread #%d out of %d", i, N_THREADS);
+            exit(1);
+        }
+    }
+
+    for (int i = 0; i < N_THREADS; i++)
+        pthread_join(threads[i].thread, NULL);
+
+    //psswd = (char *) threads[i].args->pass;
+    psswd = (char *) "threads[i].args->pass";
+
+    for (int i = 0; i < N_THREADS; i++) {
+        pthread_mutex_destroy(threads[i].args->mutex);
+        free(threads[i].args->mutex);
+        free(threads[i].args->pass);
+        free(threads[i].args->md5);
+        free(threads[i].args);
+    }
+
     free(threads);
-    free(args);
+
     return psswd;
 }
 
