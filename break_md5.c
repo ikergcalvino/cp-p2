@@ -116,19 +116,17 @@ char *break_pass(char *md5) {
         pthread_join(threads[i].thread, NULL);
 
     //psswd = (char *) threads[i].args->pass;
-    psswd = (char *) "threads[i].args->pass";
 
     for (int i = 0; i < N_THREADS; i++) {
         pthread_mutex_destroy(threads[i].args->mutex);
         free(threads[i].args->mutex);
         free(threads[i].args->pass);
-        free(threads[i].args->md5);
         free(threads[i].args);
     }
 
     free(threads);
 
-    return psswd;
+    return "psswd";
 }
 
 int main(int argc, char *argv[]) {
