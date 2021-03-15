@@ -3,8 +3,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #define PASS_LEN 6
+#define N_THREADS 8
+
+struct data
+{
+    char *md5;
+    int found;
+    pthread_mutex_t *mutex;
+};
+
+struct break_md5
+{
+    int id;
+    struct data *data;
+};
+
+struct thread_info
+{
+    pthread_t thread;
+    struct break_md5 *args;
+};
 
 long ipow(long base, int exp)
 {
@@ -46,35 +67,111 @@ void to_hex(unsigned char *res, char *hex_res) {
     hex_res[MD5_DIGEST_LENGTH * 2] = '\0';
 }
 
-char *break_pass(char *md5) {
+void *break_pass(void *ptr) {
+    struct break_md5 *args = ptr;
     unsigned char res[MD5_DIGEST_LENGTH];
     char hex_res[MD5_DIGEST_LENGTH * 2 + 1];
     unsigned char *pass = malloc((PASS_LEN + 1) * sizeof(char));
     long bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
                                      // lowercase chars =>
                                     //     26 ^ PASS_LEN  different cases
-    for(long i=0; i < bound; i++) {
-        long_to_pass(i, pass);
+    for(long i=args->id; i < bound; i += N_THREADS) {
+        pthread_mutex_lock(args->data->mutex);
+        if (!args->data->found) {
+            pthread_mutex_unlock(args->data->mutex);
+            long_to_pass(i, pass);
 
-        MD5(pass, PASS_LEN, res);
+            MD5(pass, PASS_LEN, res);
 
-        to_hex(res, hex_res);
+            to_hex(res, hex_res);
 
-        if(!strcmp(hex_res, md5)) break; // Found it!
+            if(!strcmp(hex_res, args->data->md5)) {
+                printf("%s: %s\n", args->data->md5, pass);
+                
+                pthread_mutex_lock(args->data->mutex);
+                args->data->found = 1;
+                pthread_mutex_unlock(args->data->mutex);
+
+                break; // Found it!
+            }
+        } else {
+            pthread_mutex_unlock(args->data->mutex);
+            break;
+        }
+
     }
 
-    return (char *) pass;
+    free(pass);
+
+    return NULL;
+}
+
+void init_data(struct data *data, char *md5) {
+    data->mutex = malloc(sizeof(pthread_mutex_t));
+
+    if (data->mutex == NULL) {
+        printf("Not enough memory\n");
+        exit(1);
+    }
+
+    pthread_mutex_init(data->mutex, NULL);
+
+    data->md5 = md5;
+    data->found = 0;
+}
+
+struct thread_info *start_threads(struct data *data) {
+    struct thread_info *threads;
+
+    threads = malloc(sizeof(struct thread_info) * N_THREADS);
+
+    if (threads == NULL) {
+        printf("Not enough memory\n");
+        exit(1);
+    }
+
+    for (long i = 0; i < N_THREADS; i++) {
+        threads[i].args = malloc(sizeof(struct break_md5));
+
+        threads[i].args->id = i;
+        threads[i].args->data = data;
+
+        if (0 != pthread_create(&threads[i].thread, NULL, break_pass, threads[i].args)) {
+            printf("Could not create thread #%d out of %d", (int) i, N_THREADS);
+            exit(1);
+        }
+    }
+
+    return threads;
+}
+
+void wait(struct thread_info *threads, struct data *data) {
+    for (int i = 0; i < N_THREADS; i++)
+        pthread_join(threads[i].thread, NULL);
+
+    for (int i = 0; i < N_THREADS; i++)
+        free(threads[i].args);
+
+    pthread_mutex_destroy(data->mutex);
+    free(data->mutex);
+
+    free(threads);
 }
 
 int main(int argc, char *argv[]) {
+    struct thread_info *thrs;
+    struct data data;
+
     if(argc < 2) {
         printf("Use: %s string\n", argv[0]);
         exit(0);
     }
 
-    char *pass = break_pass(argv[1]);
+    init_data(&data, argv[1]);
 
-    printf("%s: %s\n", argv[1], pass);
-    free(pass);
+    thrs = start_threads(&data);
+
+    wait(thrs, &data);
+
     return 0;
 }
