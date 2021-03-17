@@ -142,7 +142,7 @@ void *progress(void *ptr) {
         fflush(stdout);
     }
 
-    printf(" FOUND!\n");
+    printf(" ALL FOUND!\n");
 
     return NULL;
 }
