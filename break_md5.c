@@ -113,13 +113,13 @@ void *break_pass(void *ptr) {
 
 void *progress(void *ptr) {
     struct break_md5 *args = ptr;
-    double found = 0, attempts = 0, prctg;
+    double attempts = 0, prctg;
     long bound = ipow(26, PASS_LEN);
-    int print;
+    int found = 0, print;
 
     while (!found) {
         pthread_mutex_lock(args->data->mutex_found);
-        found = (double) args->data->found;
+        found = args->data->found;
         pthread_mutex_unlock(args->data->mutex_found);
 
         pthread_mutex_lock(args->data->mutex_attempt);
