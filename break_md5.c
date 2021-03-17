@@ -10,9 +10,10 @@
 #define PROGRESS_BAR "##################################################"
 
 struct data {
-    char *md5;
+    char **md5;
     int found;
     int attempts;
+    int hashes;
     pthread_mutex_t *mutex_found;
     pthread_mutex_t *mutex_attempt;
 };
@@ -77,7 +78,7 @@ void *break_pass(void *ptr) {
                                     //     26 ^ PASS_LEN  different cases
     for(long i=args->id; i < bound; i += N_THREADS) {
         pthread_mutex_lock(args->data->mutex_found);
-        if (!args->data->found) {
+        if (args->data->found != args->data->hashes) {
             pthread_mutex_unlock(args->data->mutex_found);
 
             pthread_mutex_lock(args->data->mutex_attempt);
@@ -90,20 +91,21 @@ void *break_pass(void *ptr) {
 
             to_hex(res, hex_res);
 
-            if(!strcmp(hex_res, args->data->md5)) {
-                printf("\r%s: %-37s\n", args->data->md5, pass);
+            pthread_mutex_lock(args->data->mutex_found);
+            for (int i = 0; i < args->data->hashes; i++) {
+                if(!strcmp(hex_res, args->data->md5[i])) {
+                    printf("\r%s: %-37s\n", args->data->md5[i], pass);
                 
-                pthread_mutex_lock(args->data->mutex_found);
-                args->data->found = 1;
-                pthread_mutex_unlock(args->data->mutex_found);
+                    args->data->found++;
 
-                break; // Found it!
+                    break; // Found it!
+                }
             }
+            pthread_mutex_unlock(args->data->mutex_found);
         } else {
             pthread_mutex_unlock(args->data->mutex_found);
             break;
         }
-
     }
 
     free(pass);
@@ -113,13 +115,13 @@ void *break_pass(void *ptr) {
 
 void *progress(void *ptr) {
     struct break_md5 *args = ptr;
-    double found = 0, attempts = 0, prctg;
+    double attempts = 0, prctg;
     long bound = ipow(26, PASS_LEN);
-    int print;
+    int found = 0, print;
 
-    while (!found) {
+    while (found != args->data->hashes) {
         pthread_mutex_lock(args->data->mutex_found);
-        found = (double) args->data->found;
+        found = args->data->found;
         pthread_mutex_unlock(args->data->mutex_found);
 
         pthread_mutex_lock(args->data->mutex_attempt);
@@ -138,7 +140,7 @@ void *progress(void *ptr) {
     return NULL;
 }
 
-void init_data(struct data *data, char *md5) {
+void init_data(struct data *data, int hashes, char *md5[]) {
     data->mutex_attempt = malloc(sizeof(pthread_mutex_t));
     data->mutex_found = malloc(sizeof(pthread_mutex_t));
 
@@ -150,9 +152,11 @@ void init_data(struct data *data, char *md5) {
     pthread_mutex_init(data->mutex_attempt, NULL);
     pthread_mutex_init(data->mutex_found, NULL);
 
-    data->md5 = md5;
+    for (int i = 0; i < hashes; i++)
+        data->md5[i] = md5[i + 1];
     data->found = 0;
     data->attempts = 0;
+    data->hashes = hashes;
 }
 
 struct thread_info *start_threads(struct data *data) {
@@ -211,7 +215,7 @@ int main(int argc, char *argv[]) {
         exit(0);
     }
 
-    init_data(&data, argv[1]);
+    init_data(&data, --argc, argv);
 
     thrs = start_threads(&data);
 
