@@ -6,14 +6,13 @@
 #include <pthread.h>
 
 #define PASS_LEN 6
-#define N_THREADS 8
+#define N_THREADS 20
 #define PROGRESS_BAR "##################################################"
 
 struct data {
     char **md5;
-    int found;
-    int attempts;
     int hashes;
+    int attempts;
     pthread_mutex_t *mutex_found;
     pthread_mutex_t *mutex_attempt;
 };
@@ -71,6 +70,7 @@ void to_hex(unsigned char *res, char *hex_res) {
 void *break_pass(void *ptr) {
     struct break_md5 *args = ptr;
     unsigned char res[MD5_DIGEST_LENGTH];
+    char *aux;
     char hex_res[MD5_DIGEST_LENGTH * 2 + 1];
     unsigned char *pass = malloc((PASS_LEN + 1) * sizeof(char));
     long bound = ipow(26, PASS_LEN); // we have passwords of PASS_LEN
@@ -78,7 +78,7 @@ void *break_pass(void *ptr) {
                                     //     26 ^ PASS_LEN  different cases
     for(long i=args->id; i < bound; i += N_THREADS) {
         pthread_mutex_lock(args->data->mutex_found);
-        if (args->data->found != args->data->hashes) {
+        if (args->data->hashes != 0) {
             pthread_mutex_unlock(args->data->mutex_found);
 
             pthread_mutex_lock(args->data->mutex_attempt);
@@ -95,8 +95,15 @@ void *break_pass(void *ptr) {
             for (int i = 0; i < args->data->hashes; i++) {
                 if(!strcmp(hex_res, args->data->md5[i])) {
                     printf("\r%s: %-37s\n", args->data->md5[i], pass);
-                
-                    args->data->found++;
+
+                    // Eliminamos el hash encontrado
+                    for (int j = i; j < (args->data->hashes - 1); j++) {
+                        aux = args->data->md5[j];
+                        args->data->md5[j] = args->data->md5[j + 1];
+                        args->data->md5[j + 1] = aux;
+                    }
+
+                    args->data->hashes--;
 
                     break; // Found it!
                 }
@@ -117,11 +124,11 @@ void *progress(void *ptr) {
     struct break_md5 *args = ptr;
     double attempts = 0, prctg;
     long bound = ipow(26, PASS_LEN);
-    int found = 0, print;
+    int found = -1, print;
 
-    while (found != args->data->hashes) {
+    while (found != 0) {
         pthread_mutex_lock(args->data->mutex_found);
-        found = args->data->found;
+        found = args->data->hashes;
         pthread_mutex_unlock(args->data->mutex_found);
 
         pthread_mutex_lock(args->data->mutex_attempt);
@@ -143,8 +150,9 @@ void *progress(void *ptr) {
 void init_data(struct data *data, int hashes, char *md5[]) {
     data->mutex_attempt = malloc(sizeof(pthread_mutex_t));
     data->mutex_found = malloc(sizeof(pthread_mutex_t));
+    data->md5 = malloc(sizeof(char*) * hashes);
 
-    if (data->mutex_attempt == NULL || data->mutex_found == NULL) {
+    if (data->mutex_attempt == NULL || data->mutex_found == NULL || data->md5 == NULL) {
         printf("Not enough memory\n");
         exit(1);
     }
@@ -154,9 +162,8 @@ void init_data(struct data *data, int hashes, char *md5[]) {
 
     for (int i = 0; i < hashes; i++)
         data->md5[i] = md5[i + 1];
-    data->found = 0;
-    data->attempts = 0;
     data->hashes = hashes;
+    data->attempts = 0;
 }
 
 struct thread_info *start_threads(struct data *data) {
@@ -202,6 +209,8 @@ void wait(struct thread_info *threads, struct data *data) {
     pthread_mutex_destroy(data->mutex_found);
     free(data->mutex_attempt);
     free(data->mutex_found);
+
+    free(data->md5);
 
     free(threads);
 }
